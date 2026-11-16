@@ -1,8 +1,8 @@
 # Linux on the HONOR MagicBook
 
-简体中文：[README.zh-CN.md](README.zh-CN.md) — the state one ZQC-P `M1050` unit
-was actually audited in, with the redeploy commands and what is still open on
-it.
+简体中文：[README.zh-CN.md](README.zh-CN.md) — the same document in Chinese,
+section for section, with a closing section on what one ZQC-P `M1050` unit under
+Ubuntu 26.04 was actually audited in.
 
 Fixes that make HONOR MagicBook laptops usable under Linux: a patched ACPI
 table for the touchpad and touchscreen, kernel-module quirks for audio and
