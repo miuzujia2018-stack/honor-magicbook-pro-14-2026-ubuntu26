@@ -1,6 +1,6 @@
 # Installing, in detail
 
-The short version is in the [README](../README.md). This is what each step
+The short version is in the [README](../README.en.md). This is what each step
 does, how to check it worked, and what to do on a system that is not the one
 this was built on.
 

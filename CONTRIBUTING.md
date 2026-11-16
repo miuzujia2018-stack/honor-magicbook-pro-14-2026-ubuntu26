@@ -157,6 +157,7 @@ The whole tree:
 ```
 HONOR_ZQC-P_M1010/
 ├── README.md                       # this file
+├── README.en.md                    # the same document in English; GitHub renders only a file actually named README, so the translated page holds that slot here
 ├── apply_patch.sh                  # one-shot installer (idempotent)
 ├── uninstall_patch.sh              # revert installer
 ├── CONTRIBUTING.md                 # conventions for installers, how to add a model

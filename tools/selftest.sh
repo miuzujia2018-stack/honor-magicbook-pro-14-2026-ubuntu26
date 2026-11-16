@@ -356,10 +356,35 @@ for f in $(grep -rl --include='*.sh' -E 'ksrc_(fetch|fetch_opt|list_dir)\b' . | 
 done
 
 section "every knob apply_patch.sh reads is in the README options table"
+# The repository has two root documents that carry the same generated tables:
+# README.md is the Chinese landing page and README.en.md the English original.
+# GitHub renders only a file actually named README, so the landing page is a
+# translation, and a check against one file alone would let the other drift
+# into telling readers something the profiles do not say.
+README_DOCS=(README.md README.en.md)
+
+readme_missing_from() {
+    local needle="$1" doc out=""
+    for doc in "${README_DOCS[@]}"; do
+        grep -qF -- "$needle" "$doc" || out+="$doc "
+    done
+    printf '%s\n' "$out"
+    [[ -z "$out" ]]
+}
+
+readme_any_has() {
+    local doc
+    for doc in "${README_DOCS[@]}"; do
+        grep -qF -- "$1" "$doc" && return 0
+    done
+    return 1
+}
+
 for v in $(grep -oE '\$\{(SKIP_[A-Z_]+|WITH_[A-Z_]+|ALLOW_[A-Z_]+|FORCE_[A-Z_]+|CHARGE_PRESET|VBT_MIN)' apply_patch.sh \
            | sed 's/\${//' | sort -u); do
-    grep -q "\`${v}=" README.md && pass "$v" \
-        || fail "apply_patch.sh reads $v and the README options table never mentions it"
+    miss="$(readme_missing_from "\`${v}=")"
+    [[ -z "$miss" ]] && pass "$v" \
+        || fail "apply_patch.sh reads $v and these options tables omit it: $miss"
 done
 # And the other way, because a documented option that nothing reads is worse
 # than an undocumented one: the reader sets it, nothing happens, and there is
@@ -368,7 +393,7 @@ while read -r v; do
     [[ -n "$v" ]] || continue
     grep -rqF --include='*.sh' "$v" . && pass "$v is read somewhere" \
         || fail "README offers $v and no script reads it"
-done < <(sed -n 's/^| `\([A-Z_][A-Z_0-9]*\)=.*/\1/p' README.md | sort -u)
+done < <(sed -n 's/^| `\([A-Z_][A-Z_0-9]*\)=.*/\1/p' "${README_DOCS[@]}" | sort -u)
 
 # Moving a file is how a link goes stale, and a stale link in a README is found
 # by the next person who follows it rather than by the person who moved the
@@ -382,7 +407,9 @@ import glob, os, re, sys
 def slug(h):
     h = h.strip().lower()
     h = re.sub(r"[`*_]", "", h)
-    h = re.sub(r"[^a-z0-9 -]", "", h)
+    # \w with UNICODE, not [a-z0-9]: the landing page is Chinese, and GitHub
+    # keeps non-ASCII letters in an anchor while dropping its punctuation.
+    h = re.sub(r"[^\w -]", "", h, flags=re.UNICODE)
     return h.replace(" ", "-")
 
 anchors = {}
@@ -507,10 +534,11 @@ for f in devices/*.conf; do
                 if fix_allowed "$fx"; then want+=" · **${fx}**"; else want+=" · ${fx}"; fi
             done
             want="| \`${m}\` \`${b}\` | ${want# · } |"
-            if grep -qF "$want" README.md; then
+            miss="$(readme_missing_from "$want")"
+            if [[ -z "$miss" ]]; then
                 pass "${m} ${b}"
             else
-                fail "the README fix list for ${m} ${b} is not what the profile says. Write:
+                fail "the README fix list for ${m} ${b} is not what the profile says. Write it in $miss as:
         ${want}"
             fi
         done
@@ -526,8 +554,8 @@ for f in devices/*.conf; do
         [[ -n "$(_profile_effective "$idx" fixes "")" ]] && continue
         for b in $boards; do
             [[ "$b" == "*" ]] && continue
-            if grep -qF "| \`${m}\` \`${b}\` |" README.md; then
-                fail "${m} ${b} lists no fixes and the README fix table has a row for it"
+            if readme_any_has "| \`${m}\` \`${b}\` |"; then
+                fail "${m} ${b} lists no fixes and a README fix table has a row for it"
             else
                 pass "${m} ${b} is absent, as it should be"
             fi
