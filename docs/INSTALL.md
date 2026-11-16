@@ -35,6 +35,11 @@ affected.
 | 18 | Runs `patch/dmic-array/install.sh` — a PipeWire source of the two built-in microphones through WebRTC, the default mic |
 | 19 | Runs `patch/auto-rebuild/install.sh` — package-manager hooks that keep steps 9, 10 and 14 applied across package updates |
 
+If an equivalent touchpad/touchscreen ACPI override is already active, run
+with `SKIP_INPUT=1`. This leaves the existing ACPI archive, keyboard command
+line workaround, and touchpad-edge HID-BPF setup untouched while applying the
+remaining fixes.
+
 `apply_patch.sh` exits non-zero if any step reported a problem, and prints how
 many at the end. Everything that did work is still applied: the steps are
 independent by design, so a failure in one does not undo the others. The exit

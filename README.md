@@ -146,6 +146,7 @@ plainly when that is not one the profile describes.
 
 | Variable | Effect |
 |---|---|
+| `SKIP_INPUT=1` | keep an existing touchpad/touchscreen ACPI override, keyboard workaround, and touchpad-edge gesture setup |
 | `SKIP_OLED=1` | leave the OLED backlight floor at the firmware value |
 | `SKIP_EDGE=1` | leave the touchpad left-edge brightness gesture dead |
 | `SKIP_FAN=1` | no fan RPM readout |
