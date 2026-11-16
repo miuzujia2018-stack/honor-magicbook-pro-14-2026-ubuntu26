@@ -1,0 +1,24 @@
+From: Local Ubuntu 26 rebase
+Subject: [PATCH] goodixmoc: add Goodix 27c6:6f94
+
+Add the reader found on this HONOR ZQC-P M1050 to the Goodix MOC driver and
+use the 12-stage enrollment flow used by the closely related 0x6a94 model.
+
+--- a/libfprint/drivers/goodixmoc/goodix.c
++++ b/libfprint/drivers/goodixmoc/goodix.c
+@@ -1396,6 +1396,7 @@ gx_fp_probe (FpDevice *device)
+     case 0x650C:
+     case 0x6582:
+     case 0x6A94:
++    case 0x6F94:
+     case 0x659A:
+       self->max_enroll_stage = 12;
+       break;
+@@ -1654,6 +1655,7 @@ static const FpIdEntry id_table[] = {
+   { .vid = 0x27c6,  .pid = 0x659A,  },
+   { .vid = 0x27c6,  .pid = 0x659C,  },
+   { .vid = 0x27c6,  .pid = 0x6A94,  },
++  { .vid = 0x27c6,  .pid = 0x6F94,  },
+   { .vid = 0x27c6,  .pid = 0x6512,  },
+   { .vid = 0x27c6,  .pid = 0x689A,  },
+   { .vid = 0x27c6,  .pid = 0x66A9,  },
