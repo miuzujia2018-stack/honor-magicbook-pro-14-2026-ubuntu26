@@ -143,23 +143,65 @@ if [[ ! -d "${BUILD_DIR}/sound/soc/sof" ]]; then
     exit 1
 fi
 
-# Fetch upstream sources matching the running kernel's tag, from the
-# stable-tree mirror. lib/ksrc.sh resolves which tag that is and confirms it
-# against the Makefile there, which matters more here than anywhere else: the
-# check just below decides whether to skip this fix entirely, and it would
-# reach the wrong answer against a tree that is not the running kernel.
-ksrc_resolve
+# Ubuntu ships the exact source tree used for its kernel in linux-source.
+# Prefer that tree when its package ABI matches the target kernel. Besides
+# preserving Ubuntu changes, this removes the GitHub API dependency that can
+# otherwise fail under shared-IP rate limiting. Other distributions retain the
+# upstream stable-tree fallback below.
+KBASE="${KVER%%-*}"
+RUN_ABI="$(sed -E 's/^[^-]*-([0-9]+).*/\1/' <<< "$KVER")"
+LOCAL_KSRC_TAR=""
+LOCAL_KSRC_ROOT=""
+KSRC_LABEL=""
+
+if [[ "$(distro_family)" == debian ]]; then
+    LOCAL_KSRC_TAR="$(find /usr/src -maxdepth 2 -type f \
+        -name "linux-source-${KBASE}.tar.*" 2>/dev/null | sort -V | tail -1)"
+    if [[ -n "$LOCAL_KSRC_TAR" ]]; then
+        SRC_PKG="linux-source-${KBASE}"
+        SRC_ABI="$(dpkg-query -W -f '${Version}' "$SRC_PKG" 2>/dev/null \
+            | sed -E 's/^[^-]*-([0-9]+).*/\1/')"
+        if [[ -n "$SRC_ABI" && "$SRC_ABI" != "$RUN_ABI" ]]; then
+            echo "[warn] $SRC_PKG is ABI $SRC_ABI but target kernel is ABI $RUN_ABI;" >&2
+            echo "       using the upstream source fallback instead." >&2
+            LOCAL_KSRC_TAR=""
+        fi
+    fi
+fi
+
+if [[ -n "$LOCAL_KSRC_TAR" ]]; then
+    echo "[*] extracting SOF sources from ${LOCAL_KSRC_TAR}"
+    mkdir -p "${WORK}/local-kernel"
+    tar xf "$LOCAL_KSRC_TAR" -C "${WORK}/local-kernel" --wildcards \
+        '*/sound/soc/sof/*' '*/sound/soc/intel/common/*.h'
+    LOCAL_KSRC_ROOT="$(find "${WORK}/local-kernel" -type d \
+        -path '*/sound/soc/sof' -print -quit)"
+    [[ -n "$LOCAL_KSRC_ROOT" ]] || {
+        echo "[fatal] linux-source archive contains no sound/soc/sof tree" >&2
+        exit 1
+    }
+    KSRC_LABEL="Ubuntu ${SRC_PKG} ABI ${SRC_ABI}"
+else
+    # Fetch upstream sources matching the running kernel's tag. ksrc_resolve
+    # confirms the tag against its Makefile before it is used.
+    ksrc_resolve
+    KSRC_LABEL="upstream ${KSRC_TAG}"
+fi
 
 # Detect whether the running kernel's in-tree ipc4-topology.c already has
 # the fix merged. We check for the distinctive comment text the upstream
 # patch adds — if the kernel package was rebuilt with PR #5762 included
 # (or its eventual upstream commit), there's nothing for us to do and
 # any prior overlay can be removed as redundant.
-echo "[*] checking upstream ${KSRC_TAG} for whether the fix is already merged"
-ksrc_fetch "sound/soc/sof/ipc4-topology.c" "${WORK}/_check_ipc4-topology.c"
+echo "[*] checking ${KSRC_LABEL} for whether the fix is already merged"
+if [[ -n "$LOCAL_KSRC_ROOT" ]]; then
+    cp "${LOCAL_KSRC_ROOT}/ipc4-topology.c" "${WORK}/_check_ipc4-topology.c"
+else
+    ksrc_fetch "sound/soc/sof/ipc4-topology.c" "${WORK}/_check_ipc4-topology.c"
+fi
 if grep -qF 'Refresh copier_data in ipc_config_data for host copiers' \
         "${WORK}/_check_ipc4-topology.c"; then
-    echo "[ok] in-tree ipc4-topology.c at ${KSRC_TAG} already contains the fix."
+    echo "[ok] ${KSRC_LABEL} already contains the fix."
     if [[ -f "$KO_OVERLAY" ]]; then
         echo "[*] removing redundant overlay $KO_OVERLAY"
         rm -f "$KO_OVERLAY"
@@ -198,29 +240,46 @@ fi
 # sound/soc/sof/ is taken. The per-platform subdirectories (intel, amd, imx,
 # mediatek, xtensa) build separate modules that this patch does not touch, and
 # pulling them in would cascade into codec and SoundWire dependencies.
-echo "[*] listing sound/soc/sof at ${KSRC_TAG}"
-mapfile -t SOF_FILES < <(
-    ksrc_list_dir sound/soc/sof \
-    | grep -E '\.(c|h)$|^Makefile$|^Kconfig$' || true
-)
+echo "[*] listing sound/soc/sof from ${KSRC_LABEL}"
+if [[ -n "$LOCAL_KSRC_ROOT" ]]; then
+    mapfile -t SOF_FILES < <(
+        find "$LOCAL_KSRC_ROOT" -maxdepth 1 -type f -printf '%f\n' \
+        | grep -E '\.(c|h)$|^Makefile$|^Kconfig$' | sort || true
+    )
+else
+    mapfile -t SOF_FILES < <(
+        ksrc_list_dir sound/soc/sof \
+        | grep -E '\.(c|h)$|^Makefile$|^Kconfig$' || true
+    )
+fi
 
 if (( ${#SOF_FILES[@]} < 20 )); then
-    echo "[fatal] could not list sound/soc/sof at ${KSRC_TAG} (got ${#SOF_FILES[@]} entries)." >&2
-    echo "        GitHub API unreachable or rate-limited. Retry later." >&2
+    echo "[fatal] could not list sound/soc/sof from ${KSRC_LABEL} (got ${#SOF_FILES[@]} entries)." >&2
     exit 1
 fi
-echo "[*] fetching ${#SOF_FILES[@]} SOF common sources"
+echo "[*] staging ${#SOF_FILES[@]} SOF common sources"
 for f in "${SOF_FILES[@]}"; do
-    ksrc_fetch "sound/soc/sof/${f}" "${WORK}/sof/${f}"
+    if [[ -n "$LOCAL_KSRC_ROOT" ]]; then
+        install -Dm0644 "${LOCAL_KSRC_ROOT}/${f}" "${WORK}/sof/${f}"
+    else
+        ksrc_fetch "sound/soc/sof/${f}" "${WORK}/sof/${f}"
+    fi
 done
 
 # sof-acpi-dev.c and friends include a few headers from the platform
 # subdirectories. Headers only: no .c files, so no extra objects are built.
 for sub in intel amd; do
-    while read -r h; do
-        [[ -n "$h" ]] || continue
-        ksrc_fetch_opt "sound/soc/sof/${sub}/${h}" "${WORK}/sof/${sub}/${h}" || true
-    done < <(ksrc_list_dir "sound/soc/sof/${sub}" | grep -E '\.h$' || true)
+    if [[ -n "$LOCAL_KSRC_ROOT" ]]; then
+        for h in "${LOCAL_KSRC_ROOT}/${sub}"/*.h; do
+            [[ -e "$h" ]] || continue
+            install -Dm0644 "$h" "${WORK}/sof/${sub}/$(basename "$h")"
+        done
+    else
+        while read -r h; do
+            [[ -n "$h" ]] || continue
+            ksrc_fetch_opt "sound/soc/sof/${sub}/${h}" "${WORK}/sof/${sub}/${h}" || true
+        done < <(ksrc_list_dir "sound/soc/sof/${sub}" | grep -E '\.h$' || true)
+    fi
 done
 
 # sof-acpi-dev.c #includes "../../codecs/hdac_hda.h" via sound/soc/intel/.
@@ -229,7 +288,12 @@ done
 mkdir -p "${WORK}/intel/common"
 for h in soc-intel-quirks.h sof-function-topology-lib.h \
          soc-acpi-intel-sdca-quirks.h soc-acpi-intel-sdw-mockup-match.h; do
-    ksrc_fetch_opt "sound/soc/intel/common/${h}" "${WORK}/intel/common/${h}" || true
+    if [[ -n "$LOCAL_KSRC_ROOT" ]]; then
+        local_header="${LOCAL_KSRC_ROOT%/sof}/intel/common/${h}"
+        [[ -r "$local_header" ]] && install -m0644 "$local_header" "${WORK}/intel/common/${h}"
+    else
+        ksrc_fetch_opt "sound/soc/intel/common/${h}" "${WORK}/intel/common/${h}" || true
+    fi
 done
 
 # Apply our patch.
@@ -240,7 +304,7 @@ echo "[*] applying ${PATCH_FILE##*/}"
     # is staged at sof/ipc4-topology.c, so strip all four leading components
     # and apply inside sof/.
     if ! patch -p4 --no-backup-if-mismatch -d sof < "$PATCH_FILE"; then
-        echo "[skip] the backport does not apply to ${KSRC_TAG}'s ipc4-topology.c." >&2
+        echo "[skip] the backport does not apply to ${KSRC_LABEL}'s ipc4-topology.c." >&2
         echo "       That kernel's SOF tree has drifted from the one the patch" >&2
         echo "       was written against. Nothing is installed for ${KVER}." >&2
         exit 3
