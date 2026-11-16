@@ -255,6 +255,38 @@ new model" template. See [docs/ADDING-A-MODEL.md](docs/ADDING-A-MODEL.md).
   Not needed by *this* patch since the OEM SSDT already implements it
   correctly inside `\_SB.PC00.I2C1.TPD0._DSM`.
 
+### Where this branch came from
+
+This page is a fork, and the part of it that is not ours is recorded here
+rather than quietly carried:
+
+- [danilrwx/honor-magicbook-pro-14-2026-ubuntu](https://github.com/danilrwx/honor-magicbook-pro-14-2026-ubuntu)
+  is the base. Everything under `patch/`, `devices/`, `lib/`, `dump/` and most
+  of `docs/` is that repository's work, carried with its history intact rather
+  than squashed, so `git blame` still reaches the original author. Its licence
+  terms, including the carve-outs below, are the ones this branch runs under.
+- [miuzujia2018-stack/honor-magicbook-pro-14-2026-ubuntu](https://github.com/miuzujia2018-stack/honor-magicbook-pro-14-2026-ubuntu),
+  branch `m1050-ubuntu-7.0.0-38`, contributed the field report and
+  `tools/audit-m1050-ubuntu.sh`, merged as commits rather than copied.
+- What this branch adds on top is listed in
+  [docs/REDEPLOY.md](docs/REDEPLOY.md) and in the closing section of
+  [README.zh-CN.md](README.zh-CN.md).
+
+The repositories whose parts this tree carries — the EgisTec SDCP patches, the
+SOF IPC4 backport at [thesofproject/linux PR 5762](https://github.com/thesofproject/linux/pull/5762),
+the out-of-tree `Huawei-WMI` driver these hotkey codes descend from, the
+reverse-engineering of the same Goodix `27c6:6f94` reader — are recorded in
+[docs/hardware/README.md](docs/hardware/README.md#related-work), and the model
+pages say fix by fix which claim came from whom. This page does not repeat
+that record.
+
+Worth stating exactly: the `goodixmoc` patch this branch adds only puts
+`27c6:6f94` into the distribution `libfprint` driver's id table and reuses the
+12-stage enrolment flow already coded for `0x6A94`. It is **not** taken from
+that reverse-engineering repository, whose value is that it independently
+confirmed the behaviour of the same part. The `origin=` field in
+`recipe.conf` records where it came from.
+
 ---
 
 ## Licence

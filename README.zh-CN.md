@@ -234,6 +234,34 @@ new model"模板把它附到 issue 上，另见 [docs/ADDING-A-MODEL.md](docs/AD
   HID 描述符寄存器地址的 `_DSM` 调用。**本补丁不需要它**，因为 OEM SSDT 已经在
   `\_SB.PC00.I2C1.TPD0._DSM` 里正确实现了。
 
+### 本分支的来源
+
+本页是一个 fork。不属于我们的那部分写在这里，而不是悄悄带过去：
+
+- [danilrwx/honor-magicbook-pro-14-2026-ubuntu](https://github.com/danilrwx/honor-magicbook-pro-14-2026-ubuntu)
+  是本仓库的基础。`patch/`、`devices/`、`lib/`、`dump/` 以及大部分 `docs/`
+  都是那个仓库的成果，并且**保留完整 git 历史**而非压缩成一个提交，所以
+  `git blame` 仍能追到原作者。本分支适用的许可条款也就是它的条款，包括下面的
+  两点例外。
+- [miuzujia2018-stack/honor-magicbook-pro-14-2026-ubuntu](https://github.com/miuzujia2018-stack/honor-magicbook-pro-14-2026-ubuntu)
+  的 `m1050-ubuntu-7.0.0-38` 分支贡献了现场报告和
+  `tools/audit-m1050-ubuntu.sh`，是以提交形式 merge 进来的，不是复制文件。
+- 本分支在其之上增加了什么，见
+  [docs/REDEPLOY.md](docs/REDEPLOY.md)，以及本页末尾一节
+  [本分支：这台机器的实际状态](#本分支这台机器的实际状态与上文的差异)。
+
+本仓库携带了哪些他人成果——EgisTec SDCP 补丁、
+[thesofproject/linux PR 5762](https://github.com/thesofproject/linux/pull/5762)
+的 SOF IPC4 回移、这些热键码最终源出的树外 `Huawei-WMI` 驱动、以及对同一颗
+Goodix `27c6:6f94` 指纹模块的逆向工作——都记录在
+[docs/hardware/README.md](docs/hardware/README.md#related-work) 的 Related work
+表里，各机型页面还逐项写明了每条结论出自谁。本页不重复那份记录。
+
+需要说清的一点：本分支为指纹加的那枚 `goodixmoc` 补丁，只是把 `27c6:6f94`
+写进发行版 `libfprint` 驱动的 ID 表并沿用 `0x6A94` 的 12 阶段录入流程，
+**没有取自上述逆向仓库**；该仓库的价值在于独立确认了同一颗模块的行为。
+`recipe.conf` 里的 `origin=` 字段写的就是这个来源。
+
 ---
 
 ## 许可
