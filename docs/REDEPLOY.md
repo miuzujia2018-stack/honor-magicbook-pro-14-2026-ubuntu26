@@ -9,6 +9,11 @@ this page is the checklist only.
 Reference state, audited on this unit: kernel `7.0.0-43-generic`, Secure Boot
 enabled, BIOS 1.12, `linux-source-7.0.0` at the same ABI as the running kernel.
 
+This is the state read off a working machine, not a tested restore. The
+sequence below has never been run against a blank disk, so treat a fresh
+install as the test it is: verify each step as it goes, and expect the open
+gaps listed at the bottom rather than a complete adaptation.
+
 ## 0. Before touching the disk
 
 - Keep one known-good kernel installed until the new one has finished a
