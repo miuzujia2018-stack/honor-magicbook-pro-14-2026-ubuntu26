@@ -1,0 +1,95 @@
+From: Local Ubuntu 26 rebase
+Subject: [PATCH] drm/i915/dp: prefer DSC over sub-8-bpc eDP on Linux 7.0
+
+Rebase of the repository's eDP DSC preference fix for the display-driver
+layout shipped by Ubuntu 26.04 kernel 7.0.0-38.  Preserve the already-working
+uncompressed configuration as a fallback if the preferred DSC pass fails.
+
+--- a/drivers/gpu/drm/i915/display/intel_dp.c
++++ b/drivers/gpu/drm/i915/display/intel_dp.c
+@@ -2782,7 +2782,9 @@
+ 		&pipe_config->hw.adjusted_mode;
+ 	struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
+ 	struct link_config_limits limits;
+-	bool dsc_needed, joiner_needs_dsc;
++	bool dsc_needed, joiner_needs_dsc, dsc_preferred = false;
++	int uncompressed_bpp = 0, uncompressed_clock = 0, uncompressed_lanes = 0;
++	int entry_bpp = pipe_config->pipe_bpp;
+ 	int num_joined_pipes;
+ 	int ret = 0;
+ 
+@@ -2820,6 +2822,21 @@
+ 							     0, false);
+ 		if (ret)
+ 			dsc_needed = true;
++		else if (intel_dp_is_edp(intel_dp) &&
++			 pipe_config->pipe_bpp < 8 * 3 &&
++			 pipe_config->pipe_bpp < limits.pipe.max_bpp &&
++			 intel_dp_supports_dsc(intel_dp, connector, pipe_config)) {
++			/*
++			 * The uncompressed search may reduce RGB to 6 bpc. If this
++			 * fixed eDP panel can decompress DSC and supports a higher
++			 * depth, prefer compression while retaining the working
++			 * uncompressed result as a fallback.
++			 */
++			uncompressed_bpp = pipe_config->pipe_bpp;
++			uncompressed_clock = pipe_config->port_clock;
++			uncompressed_lanes = pipe_config->lane_count;
++			dsc_preferred = true;
++		}
+ 	}
+ 
+ 	if (dsc_needed && !intel_dp_supports_dsc(intel_dp, connector, pipe_config)) {
+@@ -2827,22 +2844,39 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	if (dsc_needed) {
++	if (dsc_needed || dsc_preferred) {
+ 		drm_dbg_kms(display->drm,
+-			    "Try DSC (fallback=%s, joiner=%s, force=%s)\n",
++			    "Try DSC (fallback=%s, joiner=%s, force=%s, preferred=%s)\n",
+ 			    str_yes_no(ret), str_yes_no(joiner_needs_dsc),
+-			    str_yes_no(intel_dp->force_dsc_en));
++			    str_yes_no(intel_dp->force_dsc_en),
++			    str_yes_no(dsc_preferred));
+ 
+-		if (!intel_dp_compute_config_limits(intel_dp, conn_state, pipe_config,
+-						    respect_downstream_limits,
+-						    true,
+-						    &limits))
+-			return -EINVAL;
+-
+-		ret = intel_dp_dsc_compute_config(intel_dp, pipe_config,
+-						  conn_state, &limits, 64);
+-		if (ret < 0)
+-			return ret;
++		/* The uncompressed search overwrote pipe_bpp; DSC should start
++		 * from the depth requested on entry, not the reduced 6-bpc value.
++		 */
++		if (dsc_preferred)
++			pipe_config->pipe_bpp = entry_bpp;
++
++		ret = -EINVAL;
++		if (intel_dp_compute_config_limits(intel_dp, conn_state, pipe_config,
++						   respect_downstream_limits,
++						   true,
++						   &limits))
++			ret = intel_dp_dsc_compute_config(intel_dp, pipe_config,
++							  conn_state, &limits, 64);
++
++		if (ret < 0) {
++			if (dsc_needed)
++				return ret;
++
++			drm_dbg_kms(display->drm,
++				    "DSC preferred but not usable, keeping %d bpp uncompressed\n",
++				    uncompressed_bpp);
++			intel_dp_dsc_reset_config(pipe_config);
++			pipe_config->pipe_bpp = uncompressed_bpp;
++			pipe_config->port_clock = uncompressed_clock;
++			pipe_config->lane_count = uncompressed_lanes;
++		}
+ 	}
+ 
+ 	drm_dbg_kms(display->drm,

@@ -27,6 +27,21 @@ declare -gA XE_FIX_PATCH=(
     [edp-dsc]="0001-drm-i915-dp-prefer-DSC-over-driving-eDP-below-8-bpc.patch"
 )
 
+# Some distro kernels retain an older display-driver layout after the generic
+# upstream patch has moved on. Prefer a patch rebased for the running base
+# release when one is present, and otherwise keep using the generic patch.
+xe_patch_file() {
+    local fix="$1" kver="${KVER:-$(uname -r)}" base generic versioned
+    base="${kver%%-*}"
+    generic="${XE_ROOT}/patch/${fix}/${XE_FIX_PATCH[$fix]}"
+    versioned="${generic%.patch}-linux-${base}.patch"
+    if [[ -r "$versioned" ]]; then
+        printf '%s\n' "$versioned"
+    else
+        printf '%s\n' "$generic"
+    fi
+}
+
 # Whether the tree already carries the fix *by some other route than our patch*.
 # This hook exists only for the case where upstream solved the same problem in
 # a different shape, so that the patch neither applies nor reverse-applies and
@@ -60,7 +75,7 @@ _xe_obsolete_cdclk_ptl() {
 xe_wanted_fixes() {
     local fix file
     for fix in "${!XE_FIX_PATCH[@]}"; do
-        file="${XE_ROOT}/patch/${fix}/${XE_FIX_PATCH[$fix]}"
+        file="$(xe_patch_file "$fix")"
         profile_lists_fix "$fix" || continue
         fix_allowed "$fix"       || continue
         [[ " ${XE_SKIP:-} " == *" $fix "* ]] && continue
@@ -81,7 +96,7 @@ xe_patch_set() {
     local src="$1" fix file
     while read -r fix; do
         [[ -n "$fix" ]] || continue
-        file="${XE_ROOT}/patch/${fix}/${XE_FIX_PATCH[$fix]}"
+        file="$(xe_patch_file "$fix")"
         if declare -F "_xe_obsolete_${fix//-/_}" >/dev/null \
            && "_xe_obsolete_${fix//-/_}" "$src"; then
             _xe_warn "patch/$fix: this kernel already carries the fix, skipping"
