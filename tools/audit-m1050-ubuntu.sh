@@ -9,6 +9,23 @@ section() { printf '\n== %s ==\n' "$1"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 kernel_log() { journalctl -k -b 0 --no-pager -o cat 2>/dev/null; }
 
+# Part ids come out of the profile, the same file apply_patch.sh installs from.
+# This board ships with more than one fingerprint sensor, so a tool that names
+# one of them here reports "missing" on a machine that has the other.
+profile_read() {
+    local root key="$1" board
+    root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+    [[ -r "$root/lib/profile.sh" ]] || return 0
+    board="$(cat /sys/class/dmi/id/board_version 2>/dev/null)"
+    [[ -n "$board" ]] || return 0
+    (
+        source "$root/lib/profile.sh" 2>/dev/null || exit 0
+        PROFILE_QUIET=1 profile_load "$root/devices/zqc-p.conf" >/dev/null 2>&1 || exit 0
+        profile_select_board "$board" >/dev/null 2>&1 || exit 0
+        profile_get "$key"
+    )
+}
+
 section "Machine"
 printf 'product: '; cat /sys/class/dmi/id/product_name 2>/dev/null || echo unknown
 printf 'board: '; cat /sys/class/dmi/id/board_name 2>/dev/null || echo unknown
@@ -50,17 +67,22 @@ kernel_log |
     tail -30 || true
 
 section "Fingerprint"
+FP_ID="$(profile_read fingerprint_usb)"
 sensor_found=0
-for dev in /sys/bus/usb/devices/*; do
-    [[ -r "$dev/idVendor" && -r "$dev/idProduct" ]] || continue
-    vendor=$(<"$dev/idVendor")
-    product=$(<"$dev/idProduct")
-    if [[ "$vendor:$product" == "27c6:6f94" ]]; then
-        sensor_found=1
-        printf 'Goodix 27c6:6f94: present (%s)\n' "$(basename "$dev")"
-    fi
-done
-(( sensor_found )) || echo 'Goodix 27c6:6f94: missing'
+if [[ -z "$FP_ID" ]]; then
+    echo 'fingerprint_usb not resolved from the profile; bus check skipped'
+else
+    for dev in /sys/bus/usb/devices/*; do
+        [[ -r "$dev/idVendor" && -r "$dev/idProduct" ]] || continue
+        vendor=$(<"$dev/idVendor")
+        product=$(<"$dev/idProduct")
+        if [[ "$vendor:$product" == "$FP_ID" ]]; then
+            sensor_found=1
+            printf 'reader %s: present (%s)\n' "$FP_ID" "$(basename "$dev")"
+        fi
+    done
+    (( sensor_found )) || printf 'reader %s: missing\n' "$FP_ID"
+fi
 if have dpkg-query; then
     dpkg-query -W -f='${Package}\t${Version}\t${db:Status-Abbrev}\n'         fprintd libfprint-2-2 libfprint-2-tod1 2>/dev/null || true
 fi

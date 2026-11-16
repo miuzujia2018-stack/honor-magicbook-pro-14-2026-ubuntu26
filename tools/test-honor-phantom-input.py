@@ -7,7 +7,22 @@ import select
 import struct
 import time
 
-target = 'FTSC1000:00 2808:5662 UNKNOWN'
+# The touchscreen's HID id comes from the profile for the board this is running
+# on, the same source apply_patch.sh installs from, rather than being written
+# here: two ZQC-P revisions are not the same machine.
+repo = Path(__file__).resolve().parents[1]
+board = Path('/sys/class/dmi/id/board_version').read_text().strip()
+hid = ''
+section = ''
+for line in (repo / 'devices' / 'zqc-p.conf').read_text().splitlines():
+    if line.startswith('['):
+        section = line.strip()[1:-1].replace('board ', '', 1).strip()
+    elif section == board and line.startswith('touchscreen_hid='):
+        hid = line.split('=', 1)[1].strip()
+if not hid:
+    raise SystemExit(f'touchscreen_hid not in the profile for board {board}; refusing to guess a device')
+
+target = f'FTSC1000:00 {hid} UNKNOWN'
 nodes = [p for p in Path('/sys/class/input').glob('event*')
          if (p / 'device/name').read_text().strip() == target]
 if len(nodes) != 1:
